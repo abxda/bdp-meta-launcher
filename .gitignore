@@ -1,0 +1,13 @@
+# Binario compilado (se distribuye via GitHub Releases, no en el repo).
+*.com
+*.com.dbg
+*.aarch64.elf
+
+# Toolchain cosmocc (se descarga aparte).
+/cosmocc/
+cosmocc.zip
+
+# OS junk
+.DS_Store
+._*
+Thumbs.db
