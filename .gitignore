@@ -14,3 +14,7 @@ cosmocc.zip
 .DS_Store
 ._*
 Thumbs.db
+
+# Token HF — nunca en git
+.hf_token
+*.token
