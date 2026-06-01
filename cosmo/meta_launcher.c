@@ -33,7 +33,29 @@
 #define BRAND_SUB    "Laboratorio de Big Data"
 #define BRAND_AUTHOR "Dr. Abel Coronado"
 
-#define HF_BASE "https://huggingface.co/datasets/abxda/bdp-lab/resolve/main"
+// ÚNICO dato cableado: dónde vive el manifiesto. Todo lo demás (archivos,
+// URLs, hashes, versiones) se define DENTRO del manifiesto, que es texto
+// editable en HF. Para cambiar cualquier URL de descarga NO hay que
+// recompilar. Y el manifiesto mismo se puede reapuntar con la variable de
+// entorno BDP_MANIFEST_URL, también sin recompilar.
+#define DEFAULT_MANIFEST_URL "https://huggingface.co/datasets/abxda/bdp-lab/resolve/main/manifest.txt"
+
+// manifest_url devuelve la URL efectiva del manifiesto (override por entorno o
+// la de por defecto).
+static const char *manifest_url(void){
+    const char *e = getenv("BDP_MANIFEST_URL");
+    return (e && *e) ? e : DEFAULT_MANIFEST_URL;
+}
+
+// manifest_base copia en out la carpeta del manifiesto (todo hasta el último
+// '/'), para resolver rutas relativas de archivos sin URL absoluta.
+static void manifest_base(char *out,size_t n){
+    const char *u = manifest_url();
+    const char *slash = strrchr(u,'/');
+    size_t len = slash ? (size_t)(slash-u) : strlen(u);
+    if(len>=n) len=n-1;
+    memcpy(out,u,len); out[len]=0;
+}
 
 static int g_color;
 static const char *C(const char *code) { return g_color ? code : ""; }
@@ -171,8 +193,7 @@ static int download(const char *url,const char *dest){
 // Formato del manifest: lineas "clave=valor"; lineas con # se ignoran.
 static int fetch_manifest_value(const char *workdir_path,const char *key,char *out,size_t n){
     char mpath[1024]; snprintf(mpath,sizeof mpath,"%s/manifest.txt",workdir_path);
-    char url[1024];   snprintf(url,sizeof url,"%s/manifest.txt",HF_BASE);
-    char cmd[2200];   snprintf(cmd,sizeof cmd,"curl -fsSL -o \"%s\" \"%s\"",mpath,url);
+    char cmd[2200];   snprintf(cmd,sizeof cmd,"curl -fsSL -o \"%s\" \"%s\"",mpath,manifest_url());
     if(run(cmd)!=0) return -1;
     FILE *f=fopen(mpath,"rb"); if(!f) return -1;
     char line[1024]; int found=-1; size_t klen=strlen(key);
@@ -203,16 +224,24 @@ static int prepare_entry(const char *base){
     snprintf(mk,sizeof mk,"mkdir -p \"%s\"",wd);
     run(mk);
 
-    char keyf[256],keys[256],file[512],sha_exp[128];
+    char keyf[256],keys[256],keyu[256],file[512],sha_exp[128],absurl[1024];
     snprintf(keyf,sizeof keyf,"%s.file",base);
     snprintf(keys,sizeof keys,"%s.sha256",base);
+    snprintf(keyu,sizeof keyu,"%s.url",base);
 
     step("Leyendo el manifiesto de distribuciones desde Hugging Face…");
     if(fetch_manifest_value(wd,keyf,file,sizeof file)!=0){ errmsg("No encontre el archivo en el manifiesto."); return 1; }
     if(fetch_manifest_value(wd,keys,sha_exp,sizeof sha_exp)!=0){ errmsg("No encontre el SHA-256 en el manifiesto."); return 1; }
 
     char url[1024],dest[1024];
-    snprintf(url,sizeof url,"%s/%s",HF_BASE,file);
+    // .url absoluta en el manifiesto (opcional) tiene prioridad; si no, se
+    // deriva de la carpeta del manifiesto + el nombre de archivo.
+    if(fetch_manifest_value(wd,keyu,absurl,sizeof absurl)==0 && absurl[0]){
+        snprintf(url,sizeof url,"%s",absurl);
+    } else {
+        char base_url[900]; manifest_base(base_url,sizeof base_url);
+        snprintf(url,sizeof url,"%s/%s",base_url,file);
+    }
     snprintf(dest,sizeof dest,"%s/%s",wd,file);
 
     char msg[1200]; snprintf(msg,sizeof msg,"Descargando %s%s%s …",BOLD,file,RESET); step(msg);

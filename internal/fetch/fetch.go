@@ -19,15 +19,39 @@ import (
 	"time"
 )
 
-// HFBase es la raíz pública (sin token) del dataset en Hugging Face.
-const HFBase = "https://huggingface.co/datasets/abxda/bdp-lab/resolve/main"
+// DefaultManifestURL es el ÚNICO dato cableado en el binario: dónde vive el
+// manifiesto. TODO lo demás (qué archivos, sus URLs, hashes, versiones) se
+// define DENTRO del manifiesto, que es un archivo de texto editable en HF.
+// Así, para cambiar cualquier URL de descarga NO hay que recompilar: editas
+// el manifiesto. Y si algún día hay que mover hasta el manifiesto mismo, se
+// puede apuntar con la variable de entorno BDP_MANIFEST_URL sin recompilar.
+const DefaultManifestURL = "https://huggingface.co/datasets/abxda/bdp-lab/resolve/main/manifest.txt"
 
-// Manifest mapea clave -> valor del archivo manifest.txt.
+// ManifestURL devuelve la URL efectiva del manifiesto: el override de entorno
+// BDP_MANIFEST_URL si está definido, o la URL por defecto.
+func ManifestURL() string {
+	if v := os.Getenv("BDP_MANIFEST_URL"); v != "" {
+		return v
+	}
+	return DefaultManifestURL
+}
+
+// manifestBase devuelve la carpeta del manifiesto (todo hasta el último '/'),
+// usada para resolver rutas relativas de archivos que no traigan URL absoluta.
+func manifestBase() string {
+	u := ManifestURL()
+	if i := strings.LastIndexByte(u, '/'); i >= 0 {
+		return u[:i]
+	}
+	return u
+}
+
+// Manifest mapea clave -> valor del manifest.txt.
 type Manifest map[string]string
 
-// FetchManifest baja y parsea manifest.txt (líneas "clave=valor"; # = comentario).
+// FetchManifest baja y parsea el manifiesto (líneas "clave=valor"; # = comentario).
 func FetchManifest() (Manifest, error) {
-	body, err := httpGet(HFBase + "/manifest.txt")
+	body, err := httpGet(ManifestURL())
 	if err != nil {
 		return nil, err
 	}
@@ -50,18 +74,28 @@ func FetchManifest() (Manifest, error) {
 }
 
 // Entry resuelve, para una clave base (p.ej. "windows-amd64-portable" o
-// "test"), el archivo y el sha256 esperado del manifest.
+// "test"), los datos de una distribución desde el manifiesto.
 type Entry struct {
 	Base     string
-	File     string
+	File     string // nombre de archivo local destino
+	URL      string // URL absoluta de descarga (opcional; si vacía, se deriva)
 	SHA256   string
 	LaunchAt string // ruta relativa a ejecutar/abrir tras extraer (opcional)
 }
 
-// Resolve extrae la Entry desde un Manifest.
+// Resolve extrae la Entry desde un Manifest. Claves reconocidas por base:
+//
+//	<base>.file    nombre del archivo (obligatorio)
+//	<base>.sha256  hash esperado (obligatorio)
+//	<base>.url     URL absoluta de descarga (opcional) — permite alojar el
+//	               archivo en CUALQUIER lugar (HF, otro CDN, tu servidor) sin
+//	               recompilar; solo se edita el manifiesto. Si falta, la URL
+//	               se deriva de la carpeta del manifiesto + .file.
+//	<base>.launch  ruta a abrir/ejecutar tras extraer (opcional)
 func (m Manifest) Resolve(base string) (Entry, error) {
 	e := Entry{Base: base}
 	e.File = m[base+".file"]
+	e.URL = m[base+".url"]
 	e.SHA256 = m[base+".sha256"]
 	e.LaunchAt = m[base+".launch"]
 	if e.File == "" || e.SHA256 == "" {
@@ -70,13 +104,22 @@ func (m Manifest) Resolve(base string) (Entry, error) {
 	return e, nil
 }
 
+// downloadURL devuelve la URL efectiva: la absoluta del manifiesto si existe,
+// o la derivada de la carpeta del manifiesto + el nombre de archivo.
+func (e Entry) downloadURL() string {
+	if e.URL != "" {
+		return e.URL
+	}
+	return manifestBase() + "/" + e.File
+}
+
 // ProgressFn recibe (bytesDescargados, bytesTotales). total=0 si es desconocido.
 type ProgressFn func(done, total int64)
 
 // Download trae e.File a destPath mostrando progreso. Verifica el SHA-256 al
 // terminar y borra el archivo si no coincide.
 func Download(e Entry, destPath string, prog ProgressFn) error {
-	url := HFBase + "/" + e.File
+	url := e.downloadURL()
 	body, total, err := httpGetLen(url)
 	if err != nil {
 		return err
