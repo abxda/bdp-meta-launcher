@@ -13,16 +13,20 @@ import (
 // mismos puertos, no pueden convivir.
 var labPorts = []int{9870, 9200, 8888}
 
-// OtherRunning reporta si parece haber un laboratorio (la otra solución, o
-// esta misma) ya en marcha, detectado porque los puertos del stack responden.
-// No distingue cuál; solo que "algo del lab está usando los puertos".
+// LabRunning reporta si parece haber un laboratorio en marcha que chocaría al
+// lanzar otro. Dos señales:
+//   - algún puerto del stack (9870/9200/8888) está ocupado (Portable corriendo
+//     con servicios, o Vagrant con servicios arrancados), o
+//   - la VM de Vagrant está encendida (aunque sus servicios aún no escuchen:
+//     la box no auto-arranca el stack, pero en cuanto se arranque chocaría, y
+//     además ambos no deben coexistir).
 func LabRunning() bool {
 	for _, p := range labPorts {
 		if portOpen(p) {
 			return true
 		}
 	}
-	return false
+	return VagrantVMRunning()
 }
 
 // ConflictWith devuelve true si lanzar la solución `s` chocaría con un

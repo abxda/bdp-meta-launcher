@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/abxda/bdp-meta-launcher/internal/brand"
 	"github.com/abxda/bdp-meta-launcher/internal/fetch"
@@ -151,20 +152,40 @@ func chooseSolution(in platform.Info, man fetch.Manifest) (platform.Solution, bo
 func prepareAndLaunch(man fetch.Manifest, in platform.Info, s platform.Solution) int {
 	// Conflicto de puertos: Portable y Vagrant usan los mismos puertos del
 	// stack (9870/9200/8888), así que no pueden correr a la vez. Si ya hay un
-	// laboratorio en marcha, avisamos antes de lanzar para no chocar.
+	// laboratorio en marcha, lo resolvemos antes de lanzar.
 	if install.LabRunning() {
 		fmt.Printf("\n  %s[!] Ya hay un laboratorio en marcha.%s\n", brand.Yellow, brand.Reset)
-		fmt.Printf("    %sLas dos soluciones (Portable y Vagrant) usan los mismos puertos\n    (9870, 9200, 8888), así que no pueden estar encendidas a la vez.%s\n", brand.Dim, brand.Reset)
-		fmt.Printf("    %sCierra/apaga el otro laboratorio antes de abrir %s%s%s:%s\n",
-			brand.Dim, brand.Blue, platform.SolutionLabel(s), brand.Reset, brand.Reset)
-		fmt.Printf("      %s- Si es Vagrant: en su panel, pestaña Servicios → \"Detener todos\",\n        o apaga la máquina virtual.%s\n", brand.Dim, brand.Reset)
-		fmt.Printf("      %s- Si es Portable: ciérralo (al cerrar detiene sus servicios).%s\n", brand.Dim, brand.Reset)
-		fmt.Printf("\n  %s¿Lanzar %s de todos modos? Podría fallar por puertos ocupados. [s/N]:%s ",
-			brand.Bold, platform.SolutionLabel(s), brand.Reset)
-		ans := strings.TrimSpace(strings.ToLower(readLine()))
-		if ans != "s" && ans != "si" && ans != "sí" {
-			fmt.Printf("\n  %sBien. Apaga el otro laboratorio y vuelve a ejecutarme.%s\n\n", brand.Dim, brand.Reset)
-			return 0
+		fmt.Printf("    %sLas dos soluciones usan los mismos puertos (9870, 9200, 8888),\n    así que no pueden estar encendidas a la vez.%s\n", brand.Dim, brand.Reset)
+
+		// Si lo que corre es la VM de Vagrant, podemos apagarla por nombre
+		// (cerrado elegante) sin saber dónde se levantó.
+		if install.VagrantVMRunning() {
+			fmt.Printf("\n  %sDetecté la máquina virtual de Vagrant encendida.%s\n", brand.Bold, brand.Reset)
+			fmt.Printf("  %s¿Apagarla limpiamente para continuar? (tu trabajo se conserva) [S/n]:%s ", brand.Bold, brand.Reset)
+			ans := strings.TrimSpace(strings.ToLower(readLine()))
+			if ans == "" || ans == "s" || ans == "si" || ans == "sí" {
+				step("Apagando la máquina virtual de Vagrant (puede tardar ~30s)…")
+				if install.ShutdownVagrantVM(90 * time.Second) {
+					ok("Máquina virtual apagada. Puertos liberados.")
+				} else {
+					bad("No confirmé el apagado a tiempo. Apaga la VM manualmente y reintenta.")
+					return 1
+				}
+			} else {
+				fmt.Printf("\n  %sBien. Apaga la VM cuando quieras y vuelve a ejecutarme.%s\n\n", brand.Dim, brand.Reset)
+				return 0
+			}
+		} else {
+			// Es el Portable (procesos locales): el meta-launcher no los mata;
+			// el alumno cierra el Portable (al cerrar detiene sus servicios).
+			fmt.Printf("    %sParece ser el Portable. Ciérralo (al cerrar detiene sus servicios)\n    y vuelve a ejecutarme.%s\n", brand.Dim, brand.Reset)
+			fmt.Printf("\n  %s¿Lanzar %s de todos modos? Podría fallar por puertos ocupados. [s/N]:%s ",
+				brand.Bold, platform.SolutionLabel(s), brand.Reset)
+			ans := strings.TrimSpace(strings.ToLower(readLine()))
+			if ans != "s" && ans != "si" && ans != "sí" {
+				fmt.Printf("\n  %sBien, hasta luego.%s\n\n", brand.Dim, brand.Reset)
+				return 0
+			}
 		}
 	}
 
