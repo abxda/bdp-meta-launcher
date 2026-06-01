@@ -20,13 +20,62 @@ import (
 	"github.com/abxda/bdp-meta-launcher/internal/platform"
 )
 
-// Root es ~/.bigdatalab (donde viven las soluciones instaladas).
+// Root es la RAÍZ del laboratorio: la carpeta donde el alumno ejecutó el
+// meta-launcher. El .exe es la "semilla" — donde lo pongas, ahí cae todo
+// (portable/, vagrant/). Mover el .exe a otra carpeta crea un laboratorio
+// nuevo en ese lugar; es predecible y el alumno ve y controla su laboratorio.
+//
+// La caja de Vagrant NO vive aquí: Vagrant la guarda en su caché global
+// (~/.vagrant.d), compartida entre proyectos, así la imagen de ~4.4 GB se baja
+// una sola vez.
+//
+// Excepción de robustez: si el directorio del ejecutable no es escribible
+// (p.ej. se ejecutó desde una carpeta protegida o un montaje de solo lectura),
+// caemos a ~/.bigdatalab para no fallar. seedDirOverridable permite forzar la
+// raíz con BDP_LAB_DIR si algún día hace falta.
 func Root() string {
+	if v := os.Getenv("BDP_LAB_DIR"); v != "" {
+		return v
+	}
+	dir := executableDir()
+	if dir != "" && isWritable(dir) {
+		return dir
+	}
+	// Fallback: home.
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
 		home = "."
 	}
 	return filepath.Join(home, ".bigdatalab")
+}
+
+// executableDir devuelve la carpeta donde vive el meta-launcher (resolviendo
+// symlinks). Esa es la raíz del laboratorio.
+func executableDir() string {
+	exe, err := os.Executable()
+	if err != nil {
+		if cwd, e := os.Getwd(); e == nil {
+			return cwd
+		}
+		return ""
+	}
+	if resolved, e := filepath.EvalSymlinks(exe); e == nil {
+		exe = resolved
+	}
+	return filepath.Dir(exe)
+}
+
+// isWritable comprueba que se puede escribir en dir creando y borrando un
+// archivo temporal. Evita elegir como raíz una carpeta de solo lectura.
+func isWritable(dir string) bool {
+	f, err := os.CreateTemp(dir, ".bdp-write-test-*")
+	if err != nil {
+		return false
+	}
+	name := f.Name()
+	f.Close()
+	os.Remove(name)
+	return true
 }
 
 // SolutionDir es la carpeta donde se instala una solución.

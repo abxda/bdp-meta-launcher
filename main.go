@@ -61,6 +61,10 @@ func diagnose() int {
 	in := platform.Detect()
 	fmt.Printf("\n  %sTu equipo%s: %s%s · %s%s\n",
 		brand.Bold, brand.Reset, brand.Green, in.OSLabel, in.ArchLabel, brand.Reset)
+	fmt.Printf("  %sTu laboratorio se crea en:%s %s%s%s\n",
+		brand.Bold, brand.Reset, brand.Cyan, install.Root(), brand.Reset)
+	fmt.Printf("  %s(es la carpeta donde está este programa; muévelo y se moverá tu laboratorio)%s\n",
+		brand.Dim, brand.Reset)
 
 	if len(in.Solutions) == 0 {
 		bad("Combinación no soportada todavía.")
