@@ -25,22 +25,35 @@ import (
 	"github.com/abxda/bdp-meta-launcher/internal/fetch"
 	"github.com/abxda/bdp-meta-launcher/internal/install"
 	"github.com/abxda/bdp-meta-launcher/internal/platform"
+	"github.com/abxda/bdp-meta-launcher/internal/ui"
 )
 
 const version = "0.2.0"
 
 func main() {
 	brand.Init()
+	code := run()
+	// Pausa antes de cerrar SOLO si se abrió por doble-click (para que el
+	// alumno alcance a leer el resultado antes de que la ventana desaparezca).
+	ui.PauseIfLaunchedByClick()
+	os.Exit(code)
+}
+
+// run despacha el subcomando y devuelve el código de salida, sin llamar a
+// os.Exit (para que la pausa de main siempre tenga oportunidad de correr).
+func run() int {
 	args := os.Args[1:]
 	switch {
 	case len(args) > 0 && args[0] == "--self-test":
-		os.Exit(selfTest())
+		return selfTest()
 	case len(args) > 0 && (args[0] == "--help" || args[0] == "-h"):
 		help()
+		return 0
 	case len(args) > 0 && args[0] == "--version":
 		fmt.Printf("%s %s v%s\n", brand.Suite, brand.Tool, version)
+		return 0
 	default:
-		os.Exit(diagnose())
+		return diagnose()
 	}
 }
 
