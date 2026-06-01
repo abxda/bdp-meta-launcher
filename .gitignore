@@ -1,7 +1,10 @@
-# Binario compilado (se distribuye via GitHub Releases, no en el repo).
+# Binarios compilados (se distribuyen via GitHub Releases + Hugging Face).
+*.exe
 *.com
 *.com.dbg
 *.aarch64.elf
+/meta-launcher
+/meta-launcher-*
 
 # Toolchain cosmocc (se descarga aparte).
 /cosmocc/
