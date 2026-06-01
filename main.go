@@ -149,6 +149,25 @@ func chooseSolution(in platform.Info, man fetch.Manifest) (platform.Solution, bo
 
 // prepareAndLaunch instala (si hace falta) la solución elegida y la lanza.
 func prepareAndLaunch(man fetch.Manifest, in platform.Info, s platform.Solution) int {
+	// Conflicto de puertos: Portable y Vagrant usan los mismos puertos del
+	// stack (9870/9200/8888), así que no pueden correr a la vez. Si ya hay un
+	// laboratorio en marcha, avisamos antes de lanzar para no chocar.
+	if install.LabRunning() {
+		fmt.Printf("\n  %s[!] Ya hay un laboratorio en marcha.%s\n", brand.Yellow, brand.Reset)
+		fmt.Printf("    %sLas dos soluciones (Portable y Vagrant) usan los mismos puertos\n    (9870, 9200, 8888), así que no pueden estar encendidas a la vez.%s\n", brand.Dim, brand.Reset)
+		fmt.Printf("    %sCierra/apaga el otro laboratorio antes de abrir %s%s%s:%s\n",
+			brand.Dim, brand.Blue, platform.SolutionLabel(s), brand.Reset, brand.Reset)
+		fmt.Printf("      %s- Si es Vagrant: en su panel, pestaña Servicios → \"Detener todos\",\n        o apaga la máquina virtual.%s\n", brand.Dim, brand.Reset)
+		fmt.Printf("      %s- Si es Portable: ciérralo (al cerrar detiene sus servicios).%s\n", brand.Dim, brand.Reset)
+		fmt.Printf("\n  %s¿Lanzar %s de todos modos? Podría fallar por puertos ocupados. [s/N]:%s ",
+			brand.Bold, platform.SolutionLabel(s), brand.Reset)
+		ans := strings.TrimSpace(strings.ToLower(readLine()))
+		if ans != "s" && ans != "si" && ans != "sí" {
+			fmt.Printf("\n  %sBien. Apaga el otro laboratorio y vuelve a ejecutarme.%s\n\n", brand.Dim, brand.Reset)
+			return 0
+		}
+	}
+
 	st := install.Check(man, in, s)
 	if !st.Installed {
 		fmt.Printf("\n  %sPreparando %s%s%s por primera vez…%s\n",
@@ -158,7 +177,14 @@ func prepareAndLaunch(man fetch.Manifest, in platform.Info, s platform.Solution)
 		} else {
 			fmt.Printf("    %sSe descarga la distribución completa (autocontenida). Puede tardar\n    según tu conexión; solo ocurre la primera vez.%s\n", brand.Dim, brand.Reset)
 		}
-		newSt, err := install.Install(man, in, s, progressBar)
+		onPhase := func(phase string) {
+			switch phase {
+			case "extrayendo":
+				fmt.Println()
+				step("Descomprimiendo… (puede tardar un poco con la distro completa; no cierres)")
+			}
+		}
+		newSt, err := install.Install(man, in, s, progressBar, onPhase)
 		fmt.Println()
 		if err != nil {
 			bad("No pude preparar la solución: " + err.Error())

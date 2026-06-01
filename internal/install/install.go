@@ -117,8 +117,13 @@ func Check(man fetch.Manifest, info platform.Info, s platform.Solution) Status {
 }
 
 // Install descarga (si hace falta) y extrae la solución. prog recibe el avance
-// de la descarga. Idempotente: si ya está instalada, no hace nada.
-func Install(man fetch.Manifest, info platform.Info, s platform.Solution, prog fetch.ProgressFn) (Status, error) {
+// de la descarga; onPhase anuncia los cambios de fase ("descargando",
+// "extrayendo") para que la UI avise (la extracción de 2.5 GB tarda y conviene
+// decir que está trabajando). Idempotente: si ya está instalada, no hace nada.
+func Install(man fetch.Manifest, info platform.Info, s platform.Solution, prog fetch.ProgressFn, onPhase func(string)) (Status, error) {
+	if onPhase == nil {
+		onPhase = func(string) {}
+	}
 	if st := Check(man, info, s); st.Installed {
 		return st, nil
 	}
@@ -133,13 +138,16 @@ func Install(man fetch.Manifest, info platform.Info, s platform.Solution, prog f
 		return Status{}, err
 	}
 	archive := filepath.Join(Root(), entry.File)
+	onPhase("descargando")
 	if err := fetch.Download(entry, archive, prog); err != nil {
 		return Status{}, fmt.Errorf("descarga: %w", err)
 	}
+	onPhase("extrayendo")
 	if err := fetch.ExtractTarGz(archive, dir); err != nil {
 		return Status{}, fmt.Errorf("descompresión: %w", err)
 	}
 	_ = os.Remove(archive) // el .tar.gz ya no se necesita tras extraer
+	onPhase("finalizando")
 
 	st := Check(man, info, s)
 	if !st.Installed {
