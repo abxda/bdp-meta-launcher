@@ -14,13 +14,16 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/abxda/bdp-meta-launcher/internal/brand"
 	"github.com/abxda/bdp-meta-launcher/internal/fetch"
+	"github.com/abxda/bdp-meta-launcher/internal/install"
 	"github.com/abxda/bdp-meta-launcher/internal/platform"
 )
 
@@ -56,28 +59,122 @@ func bad(msg string)  { fmt.Printf("  %s[!]%s %s\n", brand.Red, brand.Reset, msg
 func diagnose() int {
 	banner()
 	in := platform.Detect()
-	fmt.Printf("\n  %sDiagnóstico del entorno%s\n", brand.Bold, brand.Reset)
-	fmt.Printf("    Sistema operativo : %s%s%s\n", brand.Green, in.OSLabel, brand.Reset)
-	fmt.Printf("    Arquitectura      : %s%s%s\n", brand.Green, in.ArchLabel, brand.Reset)
+	fmt.Printf("\n  %sTu equipo%s: %s%s · %s%s\n",
+		brand.Bold, brand.Reset, brand.Green, in.OSLabel, in.ArchLabel, brand.Reset)
 
-	fmt.Printf("\n  %sSolución(es) recomendada(s) para tu equipo%s\n", brand.Bold, brand.Reset)
 	if len(in.Solutions) == 0 {
 		bad("Combinación no soportada todavía.")
 		fmt.Printf("    %sEscribe al %s para soporte.%s\n\n", brand.Dim, brand.Author, brand.Reset)
 		return 2
 	}
-	for i, s := range in.Solutions {
-		fmt.Printf("    %s%d) %s%s%s\n", brand.Bold, i+1, brand.Blue, platform.SolutionLabel(s), brand.Reset)
-		fmt.Printf("       %s%s%s\n", brand.Dim, platform.SolutionDesc(s), brand.Reset)
+
+	// Necesitamos el manifiesto para saber qué está instalado y descargar.
+	man, err := fetch.FetchManifest()
+	if err != nil {
+		bad("No pude leer el catálogo de soluciones: " + err.Error())
+		fmt.Printf("    %sRevisa tu conexión a internet e inténtalo de nuevo.%s\n\n", brand.Dim, brand.Reset)
+		return 1
 	}
+
+	// Elegir solución: si solo hay una, va directa; si hay dos, menú amable.
+	chosen := in.Solutions[0]
 	if len(in.Solutions) > 1 {
-		fmt.Printf("\n  %sTu equipo admite ambas:%s\n", brand.Bold, brand.Reset)
-		fmt.Printf("    %s- Portable%s  máxima velocidad, sin instalar VirtualBox.\n", brand.Blue, brand.Reset)
-		fmt.Printf("    %s- Vagrant%s   entorno aislado e idéntico para todos.\n", brand.Blue, brand.Reset)
+		c, quit := chooseSolution(in, man)
+		if quit {
+			fmt.Printf("\n  %sHasta luego.%s\n\n", brand.Dim, brand.Reset)
+			return 0
+		}
+		chosen = c
+	} else {
+		fmt.Printf("\n  %sSolución para tu equipo:%s %s%s%s\n",
+			brand.Bold, brand.Reset, brand.Blue, platform.SolutionLabel(chosen), brand.Reset)
+		fmt.Printf("    %s%s%s\n", brand.Dim, platform.SolutionDesc(chosen), brand.Reset)
 	}
-	fmt.Printf("\n  %sSiguiente:%s descarga + lanzamiento (CP3). Prueba la descarga con:\n", brand.Yellow, brand.Reset)
-	fmt.Printf("    %smeta-launcher --self-test%s\n\n", brand.Dim, brand.Reset)
+
+	return prepareAndLaunch(man, in, chosen)
+}
+
+// chooseSolution muestra el menú amable de elección (Windows, 2 opciones) con
+// el estado de cada solución (instalada o no) y tamaño de descarga. Devuelve la
+// solución elegida, o quit=true si el alumno sale.
+func chooseSolution(in platform.Info, man fetch.Manifest) (platform.Solution, bool) {
+	for {
+		fmt.Printf("\n  %s¿Qué quieres usar hoy?%s\n\n", brand.Bold, brand.Reset)
+		for i, s := range in.Solutions {
+			st := install.Check(man, in, s)
+			tag := brand.Dim + "(no instalado)" + brand.Reset
+			if st.Installed {
+				tag = brand.Green + "✓ instalado" + brand.Reset
+			}
+			size := manifestSize(man, in, s)
+			fmt.Printf("    %s%d)%s %s%s%s  %s\n", brand.Bold, i+1, brand.Reset,
+				brand.Blue, platform.SolutionLabel(s), brand.Reset, tag)
+			fmt.Printf("       %s%s%s\n", brand.Dim, platform.SolutionDesc(s), brand.Reset)
+			if size != "" {
+				fmt.Printf("       %sDescarga: %s%s\n", brand.Dim, size, brand.Reset)
+			}
+		}
+		fmt.Printf("    %sq)%s Salir\n", brand.Bold, brand.Reset)
+		fmt.Printf("\n  %sElige una opción [1-%d, q]:%s ", brand.Bold, len(in.Solutions), brand.Reset)
+
+		choice := readLine()
+		choice = strings.TrimSpace(strings.ToLower(choice))
+		if choice == "q" {
+			return "", true
+		}
+		n, err := strconv.Atoi(choice)
+		if err == nil && n >= 1 && n <= len(in.Solutions) {
+			return in.Solutions[n-1], false
+		}
+		fmt.Printf("  %sOpción no válida.%s\n", brand.Yellow, brand.Reset)
+	}
+}
+
+// prepareAndLaunch instala (si hace falta) la solución elegida y la lanza.
+func prepareAndLaunch(man fetch.Manifest, in platform.Info, s platform.Solution) int {
+	st := install.Check(man, in, s)
+	if !st.Installed {
+		fmt.Printf("\n  %sPreparando %s%s%s por primera vez…%s\n",
+			brand.Bold, brand.Blue, platform.SolutionLabel(s), brand.Reset, brand.Reset)
+		if s == platform.Vagrant {
+			fmt.Printf("    %sSe descarga solo el panel (ligero). La máquina virtual con el stack\n    se baja después, dentro del panel.%s\n", brand.Dim, brand.Reset)
+		} else {
+			fmt.Printf("    %sSe descarga la distribución completa (autocontenida). Puede tardar\n    según tu conexión; solo ocurre la primera vez.%s\n", brand.Dim, brand.Reset)
+		}
+		newSt, err := install.Install(man, in, s, progressBar)
+		fmt.Println()
+		if err != nil {
+			bad("No pude preparar la solución: " + err.Error())
+			return 1
+		}
+		ok("Solución preparada en disco.")
+		st = newSt
+	} else {
+		fmt.Printf("\n  %s✓ %s ya está instalada.%s\n", brand.Green, platform.SolutionLabel(s), brand.Reset)
+	}
+
+	step("Lanzando " + platform.SolutionLabel(s) + "…")
+	if err := install.Launch(st); err != nil {
+		bad("No pude lanzar la aplicación: " + err.Error())
+		fmt.Printf("    %sLa encontrarás en: %s%s\n", brand.Dim, st.LaunchPath, brand.Reset)
+		return 1
+	}
+	ok("¡Listo! La aplicación se está abriendo.")
+	fmt.Printf("  %sPuedes cerrar esta ventana.%s\n\n", brand.Dim, brand.Reset)
 	return 0
+}
+
+// manifestSize devuelve la etiqueta de tamaño de descarga (<base>.size) si el
+// manifiesto la trae, p.ej. "~2 GB". Solo informativo.
+func manifestSize(man fetch.Manifest, in platform.Info, s platform.Solution) string {
+	return man[in.OS+"-"+in.Arch+"-"+string(s)+".size"]
+}
+
+// readLine lee una línea de stdin (la elección del menú).
+func readLine() string {
+	r := bufio.NewReader(os.Stdin)
+	line, _ := r.ReadString('\n')
+	return line
 }
 
 func selfTest() int {
