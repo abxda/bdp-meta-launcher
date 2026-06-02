@@ -143,9 +143,17 @@ func Install(man fetch.Manifest, info platform.Info, s platform.Solution, prog f
 		return Status{}, fmt.Errorf("descarga: %w", err)
 	}
 	onPhase("extrayendo")
-	if err := fetch.ExtractTarGz(archive, dir); err != nil {
+	last := 0
+	if err := fetch.ExtractTarGzProgress(archive, dir, func(files int, b int64) {
+		if files-last >= 400 {
+			last = files
+			fmt.Printf("\r    descomprimiendo… %d archivos (%d MB)   ", files, b/(1<<20))
+		}
+	}); err != nil {
+		fmt.Println()
 		return Status{}, fmt.Errorf("descompresión: %w", err)
 	}
+	fmt.Printf("\r    descomprimido: extracción completa.                 \n")
 	_ = os.Remove(archive) // el .tar.gz ya no se necesita tras extraer
 	onPhase("finalizando")
 

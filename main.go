@@ -270,10 +270,18 @@ func selfTest() int {
 	ok("Integridad verificada (SHA-256).")
 
 	step(fmt.Sprintf("Descomprimiendo en %s%s%s …", brand.Bold, wd, brand.Reset))
-	if err := fetch.ExtractTarGz(dest, wd); err != nil {
+	last := 0
+	if err := fetch.ExtractTarGzProgress(dest, wd, func(files int, b int64) {
+		if files-last >= 400 {
+			last = files
+			fmt.Printf("\r    descomprimiendo… %d archivos (%d MB)   ", files, b/(1<<20))
+		}
+	}); err != nil {
+		fmt.Println()
 		bad("Falló la descompresión: " + err.Error())
 		return 1
 	}
+	fmt.Println()
 	ok("Solución preparada en disco.")
 	fmt.Println()
 	ok("Auto-prueba CP2 EXITOSA: la cadena de descarga funciona en esta plataforma.")

@@ -257,9 +257,19 @@ static int prepare_entry(const char *base){
     }
     okmsg("Integridad verificada.");
 
-    char emsg[1200]; snprintf(emsg,sizeof emsg,"Descomprimiendo en %s%s%s …",BOLD,wd,RESET); step(emsg);
+    char emsg[1200]; snprintf(emsg,sizeof emsg,
+        "Descomprimiendo en %s%s%s … (puede tardar varios minutos; no cierres la ventana)",
+        BOLD,wd,RESET); step(emsg);
     if(extract_targz(dest,wd)!=0){ errmsg("Fallo la descompresion."); return 1; }
     okmsg("Listo. Solucion preparada en disco.");
+    // En macOS, lanzar desde un volumen EXTERNO dispara el permiso TCC de
+    // "volumen extraible"; avisamos para que el alumno lo apruebe (si extrae en
+    // disco interno, no aplica).
+    if(detect_os()==OS_MACOS){
+        printf("  %sNota macOS:%s si ejecutas el laboratorio desde un disco o USB EXTERNO, macOS\n",YELLOW,RESET);
+        printf("    pedira permiso de acceso a \"volumen extraible\" la primera vez: pulsa %sPermitir%s.\n",BOLD,RESET);
+        printf("    (Si lo extraes en tu disco interno, no aplica.)\n");
+    }
     return 0;
 }
 

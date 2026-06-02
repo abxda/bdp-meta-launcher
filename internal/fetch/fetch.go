@@ -161,6 +161,19 @@ func Download(e Entry, destPath string, prog ProgressFn) error {
 // ExtractTarGz descomprime un .tar.gz en destDir (creándolo). Protege contra
 // path traversal (entradas con .. o rutas absolutas).
 func ExtractTarGz(archivePath, destDir string) error {
+	return ExtractTarGzProgress(archivePath, destDir, nil)
+}
+
+// ExtractTarGzProgress es como ExtractTarGz pero, si onProgress != nil, lo
+// invoca tras cada entrada con (archivos extraídos, bytes escritos) para que la
+// UI muestre avance (la distro portable pesa ~GB y descomprimir tarda minutos).
+//
+// Maneja regular files, directorios y SYMLINKS (y hardlinks). Los symlinks son
+// imprescindibles en las distros de macOS (bundles .jdk/.app, wrappers de
+// python): si se omiten, el kit queda roto. En Windows crear un symlink puede
+// requerir privilegios; si falla se omite ese enlace SIN abortar (los tars de
+// Windows no usan symlinks, así que es seguro).
+func ExtractTarGzProgress(archivePath, destDir string, onProgress func(files int, bytes int64)) error {
 	f, err := os.Open(archivePath)
 	if err != nil {
 		return err
@@ -177,6 +190,13 @@ func ExtractTarGz(archivePath, destDir string) error {
 		return err
 	}
 	cleanDest := filepath.Clean(destDir)
+	var files int
+	var bytes int64
+	tick := func() {
+		if onProgress != nil {
+			onProgress(files, bytes)
+		}
+	}
 	for {
 		hd, err := tr.Next()
 		if err == io.EOF {
@@ -204,11 +224,31 @@ func ExtractTarGz(archivePath, destDir string) error {
 			if err != nil {
 				return err
 			}
-			if _, err := io.Copy(w, tr); err != nil {
-				w.Close()
+			n, err := io.Copy(w, tr)
+			w.Close()
+			if err != nil {
 				return err
 			}
-			w.Close()
+			bytes += n
+			files++
+			tick()
+		case tar.TypeSymlink:
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return err
+			}
+			os.Remove(target) // por si quedó de una extracción previa
+			if err := os.Symlink(hd.Linkname, target); err != nil {
+				continue // Windows sin privilegios: omitir sin abortar
+			}
+			files++
+			tick()
+		case tar.TypeLink:
+			os.Remove(target)
+			if err := os.Link(filepath.Join(destDir, hd.Linkname), target); err != nil {
+				continue
+			}
+			files++
+			tick()
 		}
 	}
 	return nil
