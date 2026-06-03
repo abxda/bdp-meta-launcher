@@ -94,7 +94,25 @@ func diagnose() int {
 		return 1
 	}
 
-	// Elegir solución: si solo hay una, va directa; si hay dos, menú amable.
+	// Ofrecer SOLO las soluciones con un artefacto LANZABLE publicado en el
+	// manifest (.launch presente). Así el alumno ve únicamente lo que de verdad
+	// funciona para su equipo, y cada solución nueva (p.ej. Container) o cada
+	// plataforma se "enciende" sola al publicar su entrada — sin recompilar ni
+	// mergear. Reduce la carga cognitiva: nunca ve una opción que no existe.
+	avail := in.Solutions[:0:0]
+	for _, s := range in.Solutions {
+		if man[in.ManifestKey(s)+".launch"] != "" {
+			avail = append(avail, s)
+		}
+	}
+	in.Solutions = avail
+	if len(in.Solutions) == 0 {
+		bad("Tu equipo está soportado, pero aún no hay una solución PUBLICADA para él.")
+		fmt.Printf("    %sRevisa el foro: publicaré los enlaces actualizados a lo largo de la semana.%s\n\n", brand.Dim, brand.Reset)
+		return 0
+	}
+
+	// Elegir solución: si solo hay una, va directa; si hay varias, menú amable.
 	chosen := in.Solutions[0]
 	if len(in.Solutions) > 1 {
 		c, quit := chooseSolution(in, man)

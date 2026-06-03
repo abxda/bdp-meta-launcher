@@ -8,8 +8,9 @@ import "runtime"
 type Solution string
 
 const (
-	Portable Solution = "portable"
-	Vagrant  Solution = "vagrant"
+	Portable  Solution = "portable"
+	Vagrant   Solution = "vagrant"
+	Container Solution = "container" // laboratorio en contenedor (Podman)
 )
 
 // Info describe el entorno actual.
@@ -24,10 +25,15 @@ type Info struct {
 // Detect inspecciona la máquina actual y devuelve su Info con la matriz ya
 // resuelta:
 //
-//	Windows amd64        -> Portable, Vagrant
-//	Linux   amd64        -> Vagrant
-//	macOS   amd64 (Intel)-> Vagrant
-//	macOS   arm64 (Apple)-> Portable
+// La matriz lista TODAS las soluciones posibles por equipo; el meta-launcher
+// luego solo OFRECE las que tienen un artefacto lanzable publicado en el
+// manifest (ver diagnose en main.go). Container (Podman) aplica donde corre
+// Podman = todos.
+//
+//	Windows amd64        -> Portable, Vagrant, Container
+//	Linux   amd64        -> Vagrant, Container
+//	macOS   amd64 (Intel)-> Vagrant, Container
+//	macOS   arm64 (Apple)-> Portable, Container
 func Detect() Info {
 	in := Info{
 		OS:        runtime.GOOS,
@@ -38,17 +44,17 @@ func Detect() Info {
 	switch runtime.GOOS {
 	case "windows":
 		if runtime.GOARCH == "amd64" {
-			in.Solutions = []Solution{Portable, Vagrant}
+			in.Solutions = []Solution{Portable, Vagrant, Container}
 		}
 	case "linux":
 		if runtime.GOARCH == "amd64" {
-			in.Solutions = []Solution{Vagrant}
+			in.Solutions = []Solution{Vagrant, Container}
 		}
 	case "darwin":
 		if runtime.GOARCH == "arm64" {
-			in.Solutions = []Solution{Portable}
+			in.Solutions = []Solution{Portable, Container}
 		} else if runtime.GOARCH == "amd64" {
-			in.Solutions = []Solution{Vagrant}
+			in.Solutions = []Solution{Vagrant, Container}
 		}
 	}
 	return in
@@ -57,17 +63,25 @@ func Detect() Info {
 // SolutionLabel y SolutionDesc dan los textos en español, homologados con el
 // resto de la suite.
 func SolutionLabel(s Solution) string {
-	if s == Portable {
+	switch s {
+	case Portable:
 		return "Portable"
+	case Container:
+		return "Container (Podman)"
+	default:
+		return "Vagrant"
 	}
-	return "Vagrant"
 }
 
 func SolutionDesc(s Solution) string {
-	if s == Portable {
+	switch s {
+	case Portable:
 		return "Distribución autocontenida: copia los binarios y ejecuta el launcher. Sin virtualización."
+	case Container:
+		return "Laboratorio en contenedor (Podman): imagen precompilada, sin VM. El launcher instala Podman y descarga la imagen."
+	default:
+		return "Máquina virtual (VirtualBox + Vagrant) con todo el stack preinstalado."
 	}
-	return "Máquina virtual (VirtualBox + Vagrant) con todo el stack preinstalado."
 }
 
 // ManifestKey devuelve la clave base en el manifest de Hugging Face para esta
