@@ -153,7 +153,11 @@ func chooseSolution(in platform.Info, man fetch.Manifest) (platform.Solution, bo
 		fmt.Printf("    %sq)%s Salir\n", brand.Bold, brand.Reset)
 		fmt.Printf("\n  %sElige una opción [1-%d, q]:%s ", brand.Bold, len(in.Solutions), brand.Reset)
 
-		choice := readLine()
+		choice, gotInput := readLine()
+		if !gotInput {
+			fmt.Printf("\n  %sSin entrada interactiva (stdin no es una terminal). Saliendo.%s\n", brand.Dim, brand.Reset)
+			return "", true
+		}
 		choice = strings.TrimSpace(strings.ToLower(choice))
 		if choice == "q" {
 			return "", true
@@ -180,7 +184,12 @@ func prepareAndLaunch(man fetch.Manifest, in platform.Info, s platform.Solution)
 		if install.VagrantVMRunning() {
 			fmt.Printf("\n  %sDetecté la máquina virtual de Vagrant encendida.%s\n", brand.Bold, brand.Reset)
 			fmt.Printf("  %s¿Apagarla limpiamente para continuar? (tu trabajo se conserva) [S/n]:%s ", brand.Bold, brand.Reset)
-			ans := strings.TrimSpace(strings.ToLower(readLine()))
+			line, gotInput := readLine()
+			if !gotInput {
+				fmt.Printf("\n  %sSin entrada interactiva: no apago nada. Vuelve a ejecutarme en una terminal.%s\n\n", brand.Dim, brand.Reset)
+				return 0
+			}
+			ans := strings.TrimSpace(strings.ToLower(line))
 			if ans == "" || ans == "s" || ans == "si" || ans == "sí" {
 				step("Apagando la máquina virtual de Vagrant (puede tardar ~30s)…")
 				if install.ShutdownVagrantVM(90 * time.Second) {
@@ -199,7 +208,12 @@ func prepareAndLaunch(man fetch.Manifest, in platform.Info, s platform.Solution)
 			fmt.Printf("    %sParece ser el Portable. Ciérralo (al cerrar detiene sus servicios)\n    y vuelve a ejecutarme.%s\n", brand.Dim, brand.Reset)
 			fmt.Printf("\n  %s¿Lanzar %s de todos modos? Podría fallar por puertos ocupados. [s/N]:%s ",
 				brand.Bold, platform.SolutionLabel(s), brand.Reset)
-			ans := strings.TrimSpace(strings.ToLower(readLine()))
+			line, gotInput := readLine()
+			if !gotInput {
+				fmt.Printf("\n  %sSin entrada interactiva: no lanzo nada para no chocar con los puertos.%s\n\n", brand.Dim, brand.Reset)
+				return 0
+			}
+			ans := strings.TrimSpace(strings.ToLower(line))
 			if ans != "s" && ans != "si" && ans != "sí" {
 				fmt.Printf("\n  %sBien, hasta luego.%s\n\n", brand.Dim, brand.Reset)
 				return 0
@@ -252,11 +266,20 @@ func manifestSize(man fetch.Manifest, in platform.Info, s platform.Solution) str
 	return man[in.OS+"-"+in.Arch+"-"+string(s)+".size"]
 }
 
-// readLine lee una línea de stdin (la elección del menú).
-func readLine() string {
-	r := bufio.NewReader(os.Stdin)
-	line, _ := r.ReadString('\n')
-	return line
+// stdinReader es un único lector compartido: recrear bufio.NewReader en cada
+// llamada puede descartar bytes ya bufferizados entre lecturas.
+var stdinReader = bufio.NewReader(os.Stdin)
+
+// readLine lee una línea de stdin (la elección del menú). ok=false cuando se
+// alcanza EOF sin datos: stdin no es una terminal (redirigido, cerrado o sin
+// TTY). El llamador DEBE tratarlo como "salir" para no caer en un bucle
+// infinito que reimprime el menú y satura la salida.
+func readLine() (string, bool) {
+	line, err := stdinReader.ReadString('\n')
+	if line == "" && err != nil {
+		return "", false
+	}
+	return line, true
 }
 
 func selfTest() int {
