@@ -31,7 +31,7 @@ autorizarlo **una sola vez**.
 ```bash
 mkdir -p ~/BDP && cd ~/BDP        # o una carpeta en el USB si no hay espacio interno
 curl -L -o meta-launcher-macos-arm64 \
-  "https://github.com/abxda/bdp-meta-launcher/releases/download/v0.2.0/meta-launcher-macos-arm64"
+  "https://github.com/abxda/bdp-meta-launcher/releases/latest/download/meta-launcher-macos-arm64"
 chmod +x meta-launcher-macos-arm64
 ./meta-launcher-macos-arm64
 ```

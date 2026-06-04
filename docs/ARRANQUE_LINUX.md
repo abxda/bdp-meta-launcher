@@ -34,7 +34,7 @@ Es el equivalente Linux del conflicto con Hyper-V en Windows (ver más abajo).
 ```bash
 mkdir -p ~/BDP && cd ~/BDP        # usa un disco con espacio holgado (~15 GB libres)
 curl -L -o meta-launcher-linux-amd64 \
-  "https://github.com/abxda/bdp-meta-launcher/releases/download/v0.2.0/meta-launcher-linux-amd64"
+  "https://github.com/abxda/bdp-meta-launcher/releases/latest/download/meta-launcher-linux-amd64"
 chmod +x meta-launcher-linux-amd64
 ./meta-launcher-linux-amd64
 ```
@@ -71,7 +71,7 @@ Comprobar la versión:
 
 ```bash
 ./meta-launcher-linux-amd64 --version
-# Big Data Lab Meta-Launcher v0.2.0
+# Big Data Lab Meta-Launcher v0.2.1
 ```
 
 ---
