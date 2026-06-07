@@ -31,7 +31,7 @@ type Info struct {
 // Podman = todos.
 //
 //	Windows amd64        -> Portable, Vagrant, Container
-//	Linux   amd64        -> Vagrant, Container
+//	Linux   amd64        -> Portable, Vagrant, Container
 //	macOS   amd64 (Intel)-> Vagrant, Container
 //	macOS   arm64 (Apple)-> Portable, Container
 func Detect() Info {
@@ -48,7 +48,7 @@ func Detect() Info {
 		}
 	case "linux":
 		if runtime.GOARCH == "amd64" {
-			in.Solutions = []Solution{Vagrant, Container}
+			in.Solutions = []Solution{Portable, Vagrant, Container}
 		}
 	case "darwin":
 		if runtime.GOARCH == "arm64" {

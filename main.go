@@ -29,7 +29,7 @@ import (
 	"github.com/abxda/bdp-meta-launcher/internal/ui"
 )
 
-const version = "0.2.1"
+const version = "0.2.2"
 
 func main() {
 	brand.Init()
